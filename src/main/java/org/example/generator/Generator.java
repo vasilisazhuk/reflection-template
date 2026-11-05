@@ -5,10 +5,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.text.Annotation;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 
@@ -47,32 +44,36 @@ public class Generator {
         }
         return weight;
     };
-    private static Class<?> resolveElementType(Annotation[] annotations, Generatable generatable){
+    private static Class<?> resolveElementType(java.lang.reflect.Parameter param,
+                                               java.lang.reflect.AnnotatedType annotatedType){
+        Generatable g = param.getAnnotation(Generatable.class);
+        if (g != null) return g.value();
 
-        //если считаем что в списке отображется сам класс
-        if (generatable != null){
-            return generatable.elementType();
+        java.lang.reflect.Type type = param.getParameterizedType();
+        if (type instanceof java.lang.reflect.ParameterizedType pt) {
+            java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+            if (args.length == 1 && args[0] instanceof Class<?> c) return c;
         }
-        //если считаем что в списке отображется какое-то из полей класса
-        for (Annotation a: annotations){
-            if(a instanceof Generatable g){
-                return g.elementType();
-            }
-        }
-        return Object.class;
+        return null;
     }
-    private Object generateValueOfCustomClass(Class<?> clazz) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+
+    private Object generateValueOfCustomClass(Class<?> clazz) throws ReflectiveOperationException {
 
         Constructor<?> bestConstructor = Arrays.stream(clazz.getDeclaredConstructors())
                 .min(Comparator.comparingInt(CONSTRUCTOR_WEIGHT))
                 .orElseThrow(() -> new IllegalArgumentException("No constructors found for " + clazz));
 
         bestConstructor.setAccessible(true);
-        Class<?> [] parameterTypes = (Class<?>[]) bestConstructor.getGenericParameterTypes();
+        Class<?> [] parameterTypes = bestConstructor.getParameterTypes();
+        java.lang.reflect.Parameter[] parameters = bestConstructor.getParameters();
+        java.lang.reflect.AnnotatedType[] annotatedTypes = bestConstructor.getAnnotatedParameterTypes();
+
         Object [] args = new Object[parameterTypes.length];
 
         for (int i  = 0; i < parameterTypes.length; i++){
-            args[i] = generateValueOfType(parameterTypes[i]);
+            //args[i] = generateValueOfType(parameterTypes[i]);
+            Class<?> elementType = resolveElementType(parameters[i], annotatedTypes[i]);
+            args[i] = generateValueOfType(parameterTypes[i], elementType);
         }
 
         return bestConstructor.newInstance(args);
@@ -85,7 +86,7 @@ public class Generator {
         return new String(array, Charset.forName("UTF-8"));
     }
 
-    private Object generateArray(Class<?> clazz) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+    private Object generateArray(Class<?> clazz) throws ReflectiveOperationException {
         Class<?> componentType = clazz.getComponentType();
         int length = rnd.nextInt(9);
         Object array = java.lang.reflect.Array.newInstance(componentType, length);
@@ -100,12 +101,18 @@ public class Generator {
         return e[rnd.nextInt(e.length)];
     }
 
-    private Object generateList(Class<?> clazz, Annotation[] annotations) throws ReflectiveOperationException {
+    private Object generateList(Class<?> clazz, Class<?> elementType) throws ReflectiveOperationException {
 
-        //todo
-        return new Object();
+        int length = rnd.nextInt(9);
+        List<Object> list = new ArrayList<>(length);
+        Class<?> elem = (elementType != null) ? elementType : Object.class;
+        for (int i = 0; i < length; i++){
+            list.add(generateValueOfType(elem));
+        }
+
+        return list;
     }
-    public Object generateValueOfType(Class<?> clazz) throws InvocationTargetException, InstantiationException, IllegalAccessException {
+    public Object generateValueOfType(Class<?> clazz, Class<?> elementType) throws ReflectiveOperationException {
 
         if (clazz == void.class) {
             throw new IllegalArgumentException("clazz must not be void");
@@ -123,13 +130,20 @@ public class Generator {
         if (clazz.isEnum()) {
             return generateEnum(clazz);
         }
+        if (clazz.isArray()){
+            return generateArray(clazz);
+        }
+        if(List.class.isAssignableFrom(clazz)){
+            return generateList(clazz, elementType);
+        }
         if(clazz.isInterface() || clazz.isAnonymousClass() || Modifier.isAbstract(clazz.getModifiers())){
             throw new IllegalArgumentException(
                     "Cannot instantiate interface/abstract class: " + clazz);
         }
-        if (clazz.isArray()){
-            return generateArray(clazz);
-        }
+
         return generateValueOfCustomClass(clazz);
+    }
+    public Object generateValueOfType(Class<?> clazz) throws ReflectiveOperationException {
+        return generateValueOfType(clazz, null);
     }
 }

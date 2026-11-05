@@ -8,5 +8,7 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE, ElementType.FIELD, ElementType.PARAMETER})
 public @interface Generatable {
-    Class<?> elementType() default Object.class;
+    Class<?> value();
+
+    String field() default "";
 }
