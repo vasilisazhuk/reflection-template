@@ -2,7 +2,9 @@ package org.example.generator;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
+import java.text.Annotation;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Map;
@@ -45,7 +47,20 @@ public class Generator {
         }
         return weight;
     };
+    private static Class<?> resolveElementType(Annotation[] annotations, Generatable generatable){
 
+        //если считаем что в списке отображется сам класс
+        if (generatable != null){
+            return generatable.elementType();
+        }
+        //если считаем что в списке отображется какое-то из полей класса
+        for (Annotation a: annotations){
+            if(a instanceof Generatable g){
+                return g.elementType();
+            }
+        }
+        return Object.class;
+    }
     private Object generateValueOfCustomClass(Class<?> clazz) throws InvocationTargetException, InstantiationException, IllegalAccessException {
 
         Constructor<?> bestConstructor = Arrays.stream(clazz.getDeclaredConstructors())
@@ -53,7 +68,7 @@ public class Generator {
                 .orElseThrow(() -> new IllegalArgumentException("No constructors found for " + clazz));
 
         bestConstructor.setAccessible(true);
-        Class<?> [] parameterTypes = bestConstructor.getParameterTypes();
+        Class<?> [] parameterTypes = (Class<?>[]) bestConstructor.getGenericParameterTypes();
         Object [] args = new Object[parameterTypes.length];
 
         for (int i  = 0; i < parameterTypes.length; i++){
@@ -85,6 +100,11 @@ public class Generator {
         return e[rnd.nextInt(e.length)];
     }
 
+    private Object generateList(Class<?> clazz, Annotation[] annotations) throws ReflectiveOperationException {
+
+        //todo
+        return new Object();
+    }
     public Object generateValueOfType(Class<?> clazz) throws InvocationTargetException, InstantiationException, IllegalAccessException {
 
         if (clazz == void.class) {
@@ -103,7 +123,7 @@ public class Generator {
         if (clazz.isEnum()) {
             return generateEnum(clazz);
         }
-        if(clazz.isInterface() || clazz.isAnonymousClass()){
+        if(clazz.isInterface() || clazz.isAnonymousClass() || Modifier.isAbstract(clazz.getModifiers())){
             throw new IllegalArgumentException(
                     "Cannot instantiate interface/abstract class: " + clazz);
         }

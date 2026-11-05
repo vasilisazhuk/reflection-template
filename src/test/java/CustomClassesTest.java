@@ -1,5 +1,4 @@
 import org.example.generator.Generator;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 
 import java.util.Objects;
